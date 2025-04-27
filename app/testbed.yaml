@@ -1,0 +1,31 @@
+---
+devices:
+  device1:
+    alias: "Device 1"
+    type: "host"
+    os: "linux"
+    platform: ubuntu
+    credentials:
+      default:
+        username: admin
+        password: admin
+    connections:
+      cli:
+        protocol: ssh
+        ip: device1
+        port: 22
+
+  device2:
+    alias: "Device 2"
+    type: "host"
+    os: "linux"
+    platform: ubuntu
+    credentials:
+      default:
+        username: admin
+        password: admin
+    connections:
+      cli:
+        protocol: ssh
+        ip: device2
+        port: 22

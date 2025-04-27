@@ -1,0 +1,76 @@
+version: '3'
+
+services:
+  device1:
+    build: ./devices/device1
+    container_name: device1
+    hostname: device1
+    networks:
+      infra_network:
+        ipv4_address: 172.20.0.2
+    ports:
+      - "2221:22"
+
+  device2:
+    build: ./devices/device2
+    container_name: device2
+    hostname: device2
+    networks:
+      infra_network:
+        ipv4_address: 172.20.0.3
+    ports:
+      - "2222:22"
+
+  netbox:
+    image: netboxcommunity/netbox:latest
+    container_name: netbox
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8080"
+    env_file:
+      - ./netbox/netbox.env
+    networks:
+      infra_network:
+        ipv4_address: 172.20.0.4
+
+  postgres:
+    image: postgres:13
+    container_name: netbox-postgres
+    env_file:
+      - ./netbox/postgres.env
+    networks:
+      - infra_network
+
+  redis:
+    image: redis:6
+    container_name: netbox-redis
+    networks:
+      - infra_network
+
+  app:
+    build: ./app
+    container_name: infrastructure-agent
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./app:/app
+    depends_on:
+      - device1
+      - device2
+      - netbox
+    networks:
+      infra_network:
+        ipv4_address: 172.20.0.5
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NETBOX_BASE_URL=http://netbox:8080/
+      - NETBOX_TOKEN=${NETBOX_TOKEN}
+
+networks:
+  infra_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
