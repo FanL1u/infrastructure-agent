@@ -27,7 +27,11 @@ def wait_for_netbox():
     
     for attempt in range(max_retries):
         try:
-            response = requests.get(f"{NETBOX_URL}/api/", timeout=5)
+            response = requests.get(
+                f"{NETBOX_URL}/api/", 
+                headers=headers,  # Include the authentication headers
+                timeout=5
+            )
             if response.status_code == 200:
                 logger.info("NetBox API is available!")
                 return True

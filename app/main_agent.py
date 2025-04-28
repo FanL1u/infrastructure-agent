@@ -28,7 +28,7 @@ def device2_agent_func(input_text: str) -> str:
     return device2_agent.invoke(f"device2: {input_text}")
 
 def netbox_agent_func(input_text: str) -> str:
-    return netbox_agent.invoke(input_text)
+    return netbox_agent.invoke({"input": input_text})
 
 # Define LangChain Tools
 device1_tool = Tool(

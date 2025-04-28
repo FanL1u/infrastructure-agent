@@ -82,37 +82,47 @@ llm = ChatOpenAI(model_name="gpt-4o", temperature=0.1)
 
 # Define the prompt template
 prompt_template = PromptTemplate(
-    input_variables=["input", "agent_scratchpad"],
+    input_variables=["input", "agent_scratchpad", "tool_names", "tools"],
     template='''
     You are a NetBox specialist that helps manage network infrastructure data.
-
+    
     You can query and update the NetBox CMDB to maintain an accurate record of devices, 
     interfaces, IP addresses, and other network components.
-
-    **TOOLS:**
+    
+    **TOOLS:**  
     {tools}
-
+    
+    **Available Tool Names (use exactly as written):**  
+    {tool_names}
+    
     To use a tool, follow this format:
-
+    
     Thought: Do I need to use a tool? Yes
     Action: [Tool Name]
     Action Input: [Input to the tool]
     Observation: [Result of the tool]
     Final Answer: [Your response to the user]
-
+    
     Begin!
-
+    
     Question: {input}
     
     {agent_scratchpad}
     '''
 )
 
+# Extract tool names and descriptions
+tool_names = ", ".join([tool.name for tool in tools])
+tool_descriptions = "\n".join([f"{tool.name}: {tool.description}" for tool in tools])
+
 # Create the agent
 agent = create_react_agent(
     llm=llm,
     tools=tools,
-    prompt=prompt_template.partial(tools="\n".join([f"- {t.name}: {t.description}" for t in tools]))
+    prompt=prompt_template.partial(
+        tool_names=tool_names,
+        tools=tool_descriptions
+    )
 )
 
 # Initialize the agent executor
@@ -120,5 +130,7 @@ agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     handle_parsing_errors=True,
-    verbose=True
+    verbose=True,
+    max_iterations=30,
+    max_execution_time=60
 )

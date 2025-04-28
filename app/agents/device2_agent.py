@@ -6,6 +6,7 @@ from langchain.agents import AgentExecutor, create_react_agent
 from langchain.prompts import PromptTemplate
 from langchain_core.tools import tool
 from dotenv import load_dotenv
+from langchain_core.tools import tool, render_text_description
 
 # Load environment variables
 load_dotenv()
@@ -66,6 +67,9 @@ llm = ChatOpenAI(model_name="gpt-4o", temperature=0.1)
 # Create tool list
 tools = [run_command_tool]
 
+# Create tool descriptions
+tool_descriptions = render_text_description(tools)
+
 # Define the prompt template
 template = '''
 You are an Infrastructure Agent that can interact with Linux systems.
@@ -98,11 +102,15 @@ New input: {input}
 '''
 
 # Create the agent
+# Create the agent
 input_variables = ["input", "agent_scratchpad", "chat_history"]
 prompt_template = PromptTemplate(
     template=template,
     input_variables=input_variables,
-    partial_variables={"tools": "\n".join([f"- {t.name}: {t.description}" for t in tools])}
+    partial_variables={
+        "tools": tool_descriptions,
+        "tool_names": ", ".join([t.name for t in tools])
+    }
 )
 
 agent = create_react_agent(llm, tools, prompt_template)
