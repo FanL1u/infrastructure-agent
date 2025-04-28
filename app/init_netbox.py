@@ -147,30 +147,59 @@ def create_device_type(manufacturer_id, device_type_name):
     
     return None
 
-def create_device(device_data, device_type_id, site_id):
-    """Create a device in NetBox from testbed data."""
-    # Use the actual device name instead of derived IP
-    name = device_data.get("alias", "Device").replace(" ", "-")
-    
-    device_payload = {
-        "name": name,
-        "device_type": device_type_id,
-        "site": site_id,
-        "status": "active"
+
+def create_device_role():
+    """Create a default device role."""
+    payload = {
+        "name": "Server",
+        "slug": "server",
+        "color": "c0c0c0"
     }
     
     try:
-        # Create device with better error logging
+        response = requests.post(
+            f"{NETBOX_URL}/api/dcim/device-roles/",
+            headers=headers,
+            json=payload,
+            verify=False
+        )
+        if response.status_code == 201:
+            logger.info("Created device role: Server")
+            return response.json()["id"]
+        else:
+            # Try to get it if it already exists
+            response = requests.get(
+                f"{NETBOX_URL}/api/dcim/device-roles/?name=Server",
+                headers=headers,
+                verify=False
+            )
+            if response.status_code == 200 and response.json()["count"] > 0:
+                logger.info("Device role Server already exists")
+                return response.json()["results"][0]["id"]
+    except Exception as e:
+        logger.warning(f"Error with device role: {e}")
+    
+    return None
+
+def create_device(device_name, device_data, device_type_id, site_id, device_role_id):
+    device_payload = {
+        "name": device_name,
+        "device_type": device_type_id,
+        "site": site_id,
+        "status": "active",
+        "role": device_role_id
+    }
+    
+    try:
         response = requests.post(
             f"{NETBOX_URL}/api/dcim/devices/",
             headers=headers,
             json=device_payload,
             verify=False
         )
-        logger.info(f"Device creation response: {response.status_code}, {response.text}")
         
         if response.status_code == 201:
-            logger.info(f"Created device: {name}")
+            logger.info(f"Created device: {device_name}")
             device_id = response.json()["id"]
             
             # Create management interface
@@ -188,33 +217,36 @@ def create_device(device_data, device_type_id, site_id):
             )
             
             if interface_response.status_code == 201:
-                logger.info(f"Created interface mgmt0 for device: {name}")
+                logger.info(f"Created interface mgmt0 for device: {device_name}")
                 interface_id = interface_response.json()["id"]
                 
-                # Add IP address
-                ip_payload = {
-                    "address": f"{device_data['connections']['cli']['ip']}/24",
-                    "assigned_object_type": "dcim.interface",
-                    "assigned_object_id": interface_id
-                }
-                
-                ip_response = requests.post(
-                    f"{NETBOX_URL}/api/ipam/ip-addresses/",
-                    headers=headers,
-                    json=ip_payload,
-                    verify=False
-                )
-                
-                if ip_response.status_code == 201:
-                    logger.info(f"Assigned IP {device_data['connections']['cli']['ip']} to {name}")
-                else:
-                    logger.error(f"Failed to create IP: {ip_response.status_code}, {ip_response.text}")
+                # Add IP address if available
+                if 'connections' in device_data and 'cli' in device_data['connections'] and 'ip' in device_data['connections']['cli']:
+                    ip_payload = {
+                        "address": f"{device_data['connections']['cli']['ip']}/24",
+                        "assigned_object_type": "dcim.interface",
+                        "assigned_object_id": interface_id
+                    }
+                    
+                    ip_response = requests.post(
+                        f"{NETBOX_URL}/api/ipam/ip-addresses/",
+                        headers=headers,
+                        json=ip_payload,
+                        verify=False
+                    )
+                    
+                    if ip_response.status_code == 201:
+                        logger.info(f"Assigned IP {device_data['connections']['cli']['ip']} to {device_name}")
+                    else:
+                        logger.error(f"Failed to create IP: {ip_response.status_code}, {ip_response.text}")
             else:
                 logger.error(f"Failed to create interface: {interface_response.status_code}, {interface_response.text}")
         else:
             logger.error(f"Failed to create device: {response.status_code}, {response.text}")
     except Exception as e:
-        logger.error(f"Error creating device {name}: {e}")
+        logger.error(f"Error creating device {device_name}: {e}")
+
+
 
 def main():
     """Initialize NetBox with data from testbed.yaml."""
@@ -229,8 +261,9 @@ def main():
         
         manufacturer_id = create_manufacturer()
         site_id = create_site()
+        device_role_id = create_device_role()
         
-        if not manufacturer_id or not site_id:
+        if not manufacturer_id or not site_id or not device_role_id:
             logger.error("Failed to create prerequisites")
             return
         
@@ -240,7 +273,7 @@ def main():
             device_type_id = create_device_type(manufacturer_id, device_type_name)
             
             if device_type_id:
-                create_device(device_data, device_type_id, site_id)
+                create_device(device_name, device_data, device_type_id, site_id, device_role_id)
         
         logger.info("NetBox initialization completed!")
         
