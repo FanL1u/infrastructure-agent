@@ -53,6 +53,14 @@ class NetBoxController:
 
 def get_netbox_data(api_url: str):
     """Get data from NetBox API."""
+    # Ensure the URL doesn't start with the full base URL
+    if api_url.startswith(NETBOX_URL):
+        api_url = api_url.replace(NETBOX_URL, "")
+    
+    # Make sure it starts with /api/
+    if not api_url.startswith("/api/"):
+        api_url = f"/api/{api_url.lstrip('/')}"
+    
     netbox_controller = NetBoxController(NETBOX_URL, NETBOX_TOKEN)
     return netbox_controller.get_api(api_url)
 
@@ -86,8 +94,10 @@ prompt_template = PromptTemplate(
     template='''
     You are a NetBox specialist that helps manage network infrastructure data.
     
-    You can query and update the NetBox CMDB to maintain an accurate record of devices, 
-    interfaces, IP addresses, and other network components.
+    **IMPORTANT: URL FORMAT RULES**
+    - Always use the format `/api/dcim/devices/` (not the full URL)
+    - Never include the base URL ("http://netbox:8080") in your requests
+    - Example: To get device1, use `/api/dcim/devices/?name=device1`
     
     **TOOLS:**  
     {tools}
@@ -95,11 +105,10 @@ prompt_template = PromptTemplate(
     **Available Tool Names (use exactly as written):**  
     {tool_names}
     
-    To use a tool, follow this format:
-    
+    **FORMAT:**
     Thought: Do I need to use a tool? Yes
-    Action: [Tool Name]
-    Action Input: [Input to the tool]
+    Action: get_netbox_data_tool
+    Action Input: "/api/dcim/devices/?name=device1"
     Observation: [Result of the tool]
     Final Answer: [Your response to the user]
     

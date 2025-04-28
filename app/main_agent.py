@@ -55,7 +55,8 @@ main_agent = initialize_agent(
     tools=tools, 
     llm=llm, 
     agent="zero-shot-react-description", 
-    verbose=True
+    verbose=True,
+    handle_parsing_errors=True
 )
 
 # Setup Streamlit UI

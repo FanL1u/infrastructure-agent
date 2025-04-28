@@ -1,31 +1,33 @@
----
 devices:
   device1:
-    alias: "Device 1"
-    type: "host"
+    alias: "Device01"
+    type: "Linux Host"
     os: "linux"
-    platform: ubuntu
+    platform: "ubuntu"
     credentials:
       default:
-        username: admin
-        password: admin
+        username: "admin"
+        password: "admin"
     connections:
       cli:
         protocol: ssh
-        ip: device1
+        ip: 172.20.0.2
         port: 22
-
+        arguments:
+          connection_timeout: 360
   device2:
-    alias: "Device 2"
-    type: "host"
+    alias: "Device02"
+    type: "Linux Host"
     os: "linux"
-    platform: ubuntu
+    platform: "ubuntu"
     credentials:
       default:
-        username: admin
-        password: admin
+        username: "admin"
+        password: "admin"
     connections:
       cli:
         protocol: ssh
-        ip: device2
+        ip: 172.20.0.3
         port: 22
+        arguments:
+          connection_timeout: 360
