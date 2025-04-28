@@ -22,13 +22,13 @@ llm = ChatOpenAI(model_name="gpt-4o", temperature=0.1)
 
 # Define agent functions
 def device1_agent_func(input_text: str) -> str:
-    return device1_agent.invoke(f"device1: {input_text}")
+    return device1_agent.invoke(input_text)
 
 def device2_agent_func(input_text: str) -> str:
-    return device2_agent.invoke(f"device2: {input_text}")
+    return device2_agent.invoke(input_text)
 
 def netbox_agent_func(input_text: str) -> str:
-    return netbox_agent.invoke({"input": input_text})
+    return netbox_agent.invoke(input_text)
 
 # Define LangChain Tools
 device1_tool = Tool(

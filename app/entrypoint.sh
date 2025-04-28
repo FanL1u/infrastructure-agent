@@ -13,12 +13,14 @@ done
 
 # Wait for NetBox API to be available
 echo "Waiting for NetBox API to be available..."
-for i in {1..30}; do
+for i in {1..60}; do  # Increased timeout
     if curl -sSf -k -H "Authorization: Token $NETBOX_TOKEN" -o /dev/null -w "%{http_code}" "http://netbox:8080/api/" > /dev/null 2>&1; then
         echo "NetBox API is available!"
+        # Give NetBox a moment to fully initialize
+        sleep 10
         break
     fi
-    echo "Waiting for NetBox API... ($i/30)"
+    echo "Waiting for NetBox API... ($i/60)"
     sleep 5
 done
 

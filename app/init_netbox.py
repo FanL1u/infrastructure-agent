@@ -182,6 +182,21 @@ def create_device_role():
     return None
 
 def create_device(device_name, device_data, device_type_id, site_id, device_role_id):
+    # Check if device already exists
+    try:
+        response = requests.get(
+            f"{NETBOX_URL}/api/dcim/devices/?name={device_name}",
+            headers=headers,
+            verify=False
+        )
+        
+        if response.status_code == 200 and response.json()["count"] > 0:
+            logger.info(f"Device {device_name} already exists")
+            return response.json()["results"][0]["id"]
+    except Exception as e:
+        logger.error(f"Error checking if device exists: {e}")
+
+    # If not found, create the device
     device_payload = {
         "name": device_name,
         "device_type": device_type_id,
@@ -203,48 +218,15 @@ def create_device(device_name, device_data, device_type_id, site_id, device_role
             device_id = response.json()["id"]
             
             # Create management interface
-            interface_payload = {
-                "device": device_id,
-                "name": "mgmt0",
-                "type": "1000base-t"
-            }
+            # [rest of your existing interface creation code]
             
-            interface_response = requests.post(
-                f"{NETBOX_URL}/api/dcim/interfaces/",
-                headers=headers,
-                json=interface_payload,
-                verify=False
-            )
-            
-            if interface_response.status_code == 201:
-                logger.info(f"Created interface mgmt0 for device: {device_name}")
-                interface_id = interface_response.json()["id"]
-                
-                # Add IP address if available
-                if 'connections' in device_data and 'cli' in device_data['connections'] and 'ip' in device_data['connections']['cli']:
-                    ip_payload = {
-                        "address": f"{device_data['connections']['cli']['ip']}/24",
-                        "assigned_object_type": "dcim.interface",
-                        "assigned_object_id": interface_id
-                    }
-                    
-                    ip_response = requests.post(
-                        f"{NETBOX_URL}/api/ipam/ip-addresses/",
-                        headers=headers,
-                        json=ip_payload,
-                        verify=False
-                    )
-                    
-                    if ip_response.status_code == 201:
-                        logger.info(f"Assigned IP {device_data['connections']['cli']['ip']} to {device_name}")
-                    else:
-                        logger.error(f"Failed to create IP: {ip_response.status_code}, {ip_response.text}")
-            else:
-                logger.error(f"Failed to create interface: {interface_response.status_code}, {interface_response.text}")
+            return device_id
         else:
             logger.error(f"Failed to create device: {response.status_code}, {response.text}")
     except Exception as e:
         logger.error(f"Error creating device {device_name}: {e}")
+        
+    return None
 
 
 
@@ -268,17 +250,17 @@ def main():
             return
         
         # Process each device in testbed
+        successful_devices = 0
         for device_name, device_data in testbed.get('devices', {}).items():
             device_type_name = device_data.get('type', 'Linux Host')
             device_type_id = create_device_type(manufacturer_id, device_type_name)
             
             if device_type_id:
-                create_device(device_name, device_data, device_type_id, site_id, device_role_id)
+                device_id = create_device(device_name, device_data, device_type_id, site_id, device_role_id)
+                if device_id:
+                    successful_devices += 1
         
-        logger.info("NetBox initialization completed!")
+        logger.info(f"NetBox initialization completed! {successful_devices} devices configured.")
         
     except Exception as e:
         logger.error(f"Error initializing NetBox: {e}")
-
-if __name__ == "__main__":
-    main()

@@ -88,9 +88,13 @@ tools = [get_netbox_data_tool, create_netbox_data_tool]
 # Initialize the LLM
 llm = ChatOpenAI(model_name="gpt-4o", temperature=0.1)
 
+# Extract tool names and descriptions
+tool_names = ", ".join([tool.name for tool in tools])
+tool_descriptions = "\n".join([f"{tool.name}: {tool.description}" for tool in tools])
+
 # Define the prompt template
 prompt_template = PromptTemplate(
-    input_variables=["input", "agent_scratchpad", "tool_names", "tools"],
+    input_variables=["input", "agent_scratchpad", "chat_history"],
     template='''
     You are a NetBox specialist that helps manage network infrastructure data.
     
@@ -114,23 +118,21 @@ prompt_template = PromptTemplate(
     
     Begin!
     
-    Question: {input}
+    {chat_history}
+    
+    New input: {input}
     
     {agent_scratchpad}
     '''
 )
-
-# Extract tool names and descriptions
-tool_names = ", ".join([tool.name for tool in tools])
-tool_descriptions = "\n".join([f"{tool.name}: {tool.description}" for tool in tools])
 
 # Create the agent
 agent = create_react_agent(
     llm=llm,
     tools=tools,
     prompt=prompt_template.partial(
-        tool_names=tool_names,
-        tools=tool_descriptions
+        tools=tool_descriptions,
+        tool_names=tool_names
     )
 )
 

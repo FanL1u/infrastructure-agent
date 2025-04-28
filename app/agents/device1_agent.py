@@ -84,11 +84,14 @@ You can execute commands on devices to gather information, configure settings, a
 **TOOLS:**
 {tools}
 
+**Available Tool Names (use exactly as written):**  
+{tool_names}
+
 To use a tool, follow this format:
 
 Thought: Do I need to use a tool? Yes
 Action: run_command_tool
-Action Input: "device1: <command>"
+Action Input: "<device_name>: <command>"
 Observation: [Result of the command]
 Final Answer: [Your response to the user]
 
@@ -123,15 +126,9 @@ agent_executor = AgentExecutor(
 )
 
 def handle_command(command: str, device_name: str):
-    """Handle and execute commands on the device."""
     try:
         logging.info(f"Executing command on {device_name}: {command}")
-        input_text = f"{device_name}: {command.strip()}"
-        response = agent_executor.invoke({
-            "input": input_text,
-            "chat_history": "",
-            "agent_scratchpad": "",
-        })
+        response = agent_executor.invoke(f"{device_name}: {command.strip()}")
         return response
     except Exception as e:
         logging.error(f"Error executing command on {device_name}: {str(e)}")
