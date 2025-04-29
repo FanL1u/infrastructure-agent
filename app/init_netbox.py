@@ -218,7 +218,44 @@ def create_device(device_name, device_data, device_type_id, site_id, device_role
             device_id = response.json()["id"]
             
             # Create management interface
-            # [rest of your existing interface creation code]
+            interface_payload = {
+                "device": device_id,
+                "name": "mgmt0",
+                "type": "1000base-t"
+            }
+            
+            interface_response = requests.post(
+                f"{NETBOX_URL}/api/dcim/interfaces/",
+                headers=headers,
+                json=interface_payload,
+                verify=False
+            )
+            
+            if interface_response.status_code == 201:
+                logger.info(f"Created interface mgmt0 for device: {device_name}")
+                interface_id = interface_response.json()["id"]
+                
+                # Add IP address if available
+                if 'connections' in device_data and 'cli' in device_data['connections'] and 'ip' in device_data['connections']['cli']:
+                    ip_payload = {
+                        "address": f"{device_data['connections']['cli']['ip']}/24",
+                        "assigned_object_type": "dcim.interface",
+                        "assigned_object_id": interface_id
+                    }
+                    
+                    ip_response = requests.post(
+                        f"{NETBOX_URL}/api/ipam/ip-addresses/",
+                        headers=headers,
+                        json=ip_payload,
+                        verify=False
+                    )
+                    
+                    if ip_response.status_code == 201:
+                        logger.info(f"Assigned IP {device_data['connections']['cli']['ip']} to {device_name}")
+                    else:
+                        logger.error(f"Failed to create IP: {ip_response.status_code}, {ip_response.text}")
+            else:
+                logger.error(f"Failed to create interface: {interface_response.status_code}, {interface_response.text}")
             
             return device_id
         else:
