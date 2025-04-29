@@ -34,5 +34,5 @@ DEVICE_COUNT=$(curl -s -k -H "Authorization: Token $NETBOX_TOKEN" "http://netbox
 echo "Found $DEVICE_COUNT devices in NetBox"
 
 # Start the Streamlit app
-echo "Starting Infrastructure Agent UI..."
+echo "Starting Infrastructure Agent UI with LangGraph..."
 streamlit run main_agent.py

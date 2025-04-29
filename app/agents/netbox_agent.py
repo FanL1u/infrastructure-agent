@@ -1,20 +1,30 @@
 import os
 import logging
 import requests
-from langchain.tools import Tool
+from typing import TypedDict, List, Dict, Any, Literal
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.prompts import PromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from dotenv import load_dotenv
+
+# Import LangGraph components
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolExecutor, ToolInvocation
 
 # Load environment variables
 load_dotenv()
-NETBOX_URL = os.getenv("NETBOX_BASE_URL").rstrip('/')
+NETBOX_URL = os.getenv("NETBOX_BASE_URL", "http://netbox:8080").rstrip('/')
 NETBOX_TOKEN = os.getenv("NETBOX_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Define the state for our agent
+class NetBoxAgentState(TypedDict):
+    messages: List[Dict[str, Any]]
+    next: Literal["assistant", "action", "end"]
 
 class NetBoxController:
     def __init__(self, netbox_url, api_token):
@@ -51,6 +61,7 @@ class NetBoxController:
             logging.error(f"POST request failed: {e}")
             return {"error": f"Request failed: {e}"}
 
+# Define tool functions
 def get_netbox_data(api_url: str):
     """Get data from NetBox API."""
     # Ensure the URL doesn't start with the full base URL
@@ -66,82 +77,188 @@ def get_netbox_data(api_url: str):
 
 def create_netbox_data(api_url: str, payload: dict):
     """Create data in NetBox API."""
+    # Ensure the URL doesn't start with the full base URL
+    if api_url.startswith(NETBOX_URL):
+        api_url = api_url.replace(NETBOX_URL, "")
+    
+    # Make sure it starts with /api/
+    if not api_url.startswith("/api/"):
+        api_url = f"/api/{api_url.lstrip('/')}"
+    
     netbox_controller = NetBoxController(NETBOX_URL, NETBOX_TOKEN)
     return netbox_controller.post_api(api_url, payload)
 
 # Define tools
-get_netbox_data_tool = Tool(
-    name="get_netbox_data_tool",
-    func=get_netbox_data,
-    description="Fetch data from NetBox using the API URL."
-)
-
-create_netbox_data_tool = Tool(
-    name="create_netbox_data_tool",
-    func=create_netbox_data,
-    description="Create new data in NetBox using the API URL and payload."
-)
-
-# Define the tools
-tools = [get_netbox_data_tool, create_netbox_data_tool]
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_netbox_data_tool",
+            "description": "Fetch data from NetBox using the API URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "api_url": {
+                        "type": "string",
+                        "description": "The API URL path, e.g., '/api/dcim/devices/'"
+                    }
+                },
+                "required": ["api_url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_netbox_data_tool",
+            "description": "Create new data in NetBox using the API URL and payload.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "api_url": {
+                        "type": "string",
+                        "description": "The API URL path, e.g., '/api/dcim/devices/'"
+                    },
+                    "payload": {
+                        "type": "object",
+                        "description": "The data to be created"
+                    }
+                },
+                "required": ["api_url", "payload"]
+            }
+        }
+    }
+]
 
 # Initialize the LLM
 llm = ChatOpenAI(model_name="gpt-4o", temperature=0.1)
 
-# Extract tool names and descriptions
-tool_names = ", ".join([tool.name for tool in tools])
-tool_descriptions = "\n".join([f"{tool.name}: {tool.description}" for tool in tools])
+# Create the system prompt
+system_prompt = """You are a NetBox specialist that helps manage network infrastructure data.
 
-# Define the prompt template
-prompt_template = PromptTemplate(
-    input_variables=["input", "agent_scratchpad", "chat_history"],
-    template='''
-    You are a NetBox specialist that helps manage network infrastructure data.
-    
-    **IMPORTANT: URL FORMAT RULES**
-    - Always use the format `/api/dcim/devices/` (not the full URL)
-    - Never include the base URL ("http://netbox:8080") in your requests
-    - Example: To get device1, use `/api/dcim/devices/?name=device1`
-    
-    **TOOLS:**  
-    {tools}
-    
-    **Available Tool Names (use exactly as written):**  
-    {tool_names}
-    
-    **FORMAT:**
-    Thought: Do I need to use a tool? Yes
-    Action: get_netbox_data_tool
-    Action Input: "/api/dcim/devices/?name=device1"
-    Observation: [Result of the tool]
-    Final Answer: [Your response to the user]
-    
-    Begin!
-    
-    {chat_history}
-    
-    New input: {input}
-    
-    {agent_scratchpad}
-    '''
-)
+**IMPORTANT: URL FORMAT RULES**
+- Always use the format `/api/dcim/devices/` (not the full URL)
+- Never include the base URL ("http://netbox:8080") in your requests
+- Example: To get device1, use `/api/dcim/devices/?name=device1`
 
-# Create the agent
-agent = create_react_agent(
-    llm=llm,
-    tools=tools,
-    prompt=prompt_template.partial(
-        tools=tool_descriptions,
-        tool_names=tool_names
-    )
-)
+You have two tools available:
+1. get_netbox_data_tool: Use this to fetch data from NetBox
+2. create_netbox_data_tool: Use this to create new data in NetBox
 
-# Initialize the agent executor
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    handle_parsing_errors=True,
-    verbose=True,
-    max_iterations=30,
-    max_execution_time=60
-)
+When using these tools, follow these guidelines:
+- Always check the response to ensure the operation was successful
+- For GET requests, specify filters in the URL query string
+- For POST requests, provide a complete and valid payload
+"""
+
+# Create a tool executor
+tool_executor = ToolExecutor({
+    "get_netbox_data_tool": get_netbox_data,
+    "create_netbox_data_tool": create_netbox_data
+})
+
+# Create the state graph
+def create_netbox_agent():
+    # Create the LLM node
+    def call_llm(state):
+        messages = state["messages"]
+        response = llm.invoke([
+            ("system", system_prompt),
+            *messages,
+        ])
+        
+        tool_call = response.tool_calls
+        if tool_call:
+            return {"messages": messages + [{"role": "assistant", "content": response.content, "tool_calls": tool_call}], "next": "action"}
+        else:
+            return {"messages": messages + [{"role": "assistant", "content": response.content}], "next": "end"}
+    
+    # Create the tool node
+    def call_tool(state):
+        messages = state["messages"]
+        last_message = messages[-1]
+        
+        if "tool_calls" not in last_message:
+            return {"messages": messages, "next": "end"}
+        
+        tool_calls = last_message["tool_calls"]
+        
+        if not tool_calls:
+            return {"messages": messages, "next": "end"}
+        
+        all_results = []
+        
+        for tool_call in tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+            
+            # Map the tool name to the function
+            if tool_name == "get_netbox_data_tool":
+                action = ToolInvocation(
+                    tool=tool_name,
+                    tool_input=tool_args.get("api_url", "")
+                )
+            elif tool_name == "create_netbox_data_tool":
+                action = ToolInvocation(
+                    tool=tool_name,
+                    tool_input={
+                        "api_url": tool_args.get("api_url", ""),
+                        "payload": tool_args.get("payload", {})
+                    }
+                )
+            else:
+                continue
+            
+            # Execute the tool
+            result = tool_executor.invoke(action)
+            tool_result = f"Result: {result}"
+            all_results.append({"tool_call_id": tool_call["id"], "role": "tool", "name": tool_call["name"], "content": tool_result})
+        
+        messages = messages + all_results
+        return {"messages": messages, "next": "assistant"}
+    
+    # Define the graph
+    workflow = StateGraph(NetBoxAgentState)
+    
+    # Add nodes
+    workflow.add_node("assistant", call_llm)
+    workflow.add_node("action", call_tool)
+    
+    # Add edges
+    workflow.add_edge("assistant", "action")
+    workflow.add_edge("action", "assistant")
+    workflow.add_edge("assistant", END)
+    workflow.add_edge("action", END)
+    
+    # Set the entry point
+    workflow.set_entry_point("assistant")
+    
+    # Compile the graph
+    return workflow.compile()
+
+# Create the netbox agent
+netbox_agent = create_netbox_agent()
+
+# Function for the main.py to use
+def invoke(input_text):
+    """
+    Process a query to NetBox
+    """
+    # Initialize the state
+    state = {
+        "messages": [{"role": "human", "content": input_text}],
+        "next": "assistant"
+    }
+    
+    # Run the graph
+    result = netbox_agent.invoke(state)
+    
+    # Extract the final assistant message
+    assistant_messages = [msg for msg in result["messages"] if msg["role"] == "assistant"]
+    
+    if assistant_messages:
+        final_message = assistant_messages[-1]["content"]
+    else:
+        final_message = "No response generated from the agent."
+    
+    return {"output": final_message}
